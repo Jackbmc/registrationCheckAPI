@@ -26,6 +26,7 @@ def setup_driver():
     chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
     chrome_options.add_argument('--log-level=3')
     chrome_options.add_argument('--silent')
+    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
     
     service = Service('/usr/local/bin/chromedriver')
     
@@ -55,7 +56,15 @@ def check_nsw_rego(plate_number):
         driver.execute_script("arguments[0].click();", check_button)
         
         logger.info("Waiting for results...")
-        time.sleep(5)  # Increased wait time after clicking check
+        time.sleep(8)  # Increased wait time to ensure page loads completely
+        
+        # Wait for any status element to be present
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "fPcfgp"))
+            )
+        except TimeoutException:
+            logger.info("Timeout waiting for status element")
         
         # First check for any error messages
         error_patterns = [
@@ -67,15 +76,39 @@ def check_nsw_rego(plate_number):
         for pattern in error_patterns:
             error_elements = driver.find_elements(By.XPATH, pattern)
             if error_elements:
+                logger.info(f"Found error message: {error_elements[0].text}")
                 return "invalid"
         
-        # Look for the specific registration status element
+        # Try multiple approaches to find registration status
         try:
-            status_element = driver.find_element(By.CLASS_NAME, "fPcfgp")
-            if status_element and "Registered" in status_element.text:
+            # Method 1: Direct class lookup
+            elements = driver.find_elements(By.CLASS_NAME, "fPcfgp")
+            logger.info(f"Found {len(elements)} elements with class fPcfgp")
+            for element in elements:
+                logger.info(f"Element text: {element.text}")
+                if "Registered" in element.text:
+                    return "registered"
+
+            # Method 2: Look for green success icon near registration status
+            success_elements = driver.find_elements(By.XPATH, "//svg[contains(@id, 'registration-icon')]/../following-sibling::div")
+            logger.info(f"Found {len(success_elements)} elements with registration icon")
+            for element in success_elements:
+                logger.info(f"Success element text: {element.text}")
+                if "Registered" in element.text:
+                    return "registered"
+                    
+            # Method 3: Look for registration expiry text
+            expiry_elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'Expires:')]")
+            logger.info(f"Found {len(expiry_elements)} expiry elements")
+            if expiry_elements:
                 return "registered"
-        except NoSuchElementException:
-            pass
+                
+            # Take screenshot for debugging
+            driver.save_screenshot('debug.png')
+            logger.info("Saved debug screenshot")
+            
+        except Exception as e:
+            logger.error(f"Error while checking registration status: {str(e)}")
             
         return "unregistered"
             

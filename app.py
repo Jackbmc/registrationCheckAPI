@@ -8,9 +8,12 @@ from selenium.webdriver.chrome.service import Service
 import time
 import logging
 import os
-# Configure logging to suppress selenium messages
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Suppress selenium messages
 logging.getLogger('selenium').setLevel(logging.CRITICAL)
-logging.getLogger().setLevel(logging.CRITICAL)
 
 app = Flask(__name__)
 
@@ -54,41 +57,26 @@ def check_nsw_rego(plate_number):
         logger.info("Waiting for results...")
         time.sleep(5)  # Increased wait time after clicking check
         
+        # First check for any error messages
+        error_patterns = [
+            "//*[contains(text(), 'No vehicles found')]",
+            "//*[contains(text(), 'not found')]",
+            "//*[contains(text(), 'Invalid')]"
+        ]
+        
+        for pattern in error_patterns:
+            error_elements = driver.find_elements(By.XPATH, pattern)
+            if error_elements:
+                return "invalid"
+        
+        # Look for the specific registration status element
         try:
-            # First check for any error messages
-            error_patterns = [
-                "//*[contains(text(), 'No vehicles found')]",
-                "//*[contains(text(), 'not found')]",
-                "//*[contains(text(), 'Invalid')]"
-            ]
-            
-            for pattern in error_patterns:
-                error_elements = driver.find_elements(By.XPATH, pattern)
-                if error_elements:
-                    logger.info(f"Found error message: {error_elements[0].text}")
-                    return "invalid"
-            
-            # Look for the specific registration status element
             status_element = driver.find_element(By.CLASS_NAME, "fPcfgp")
             if status_element and "Registered" in status_element.text:
-                logger.info(f"Found registration status: {status_element.text}")
-                return "registered"
-            
-            logger.info("Vehicle appears to be unregistered")
-            return "unregistered"
-            
-            logger.info("No status found after trying all patterns")
-            return "invalid"
-        
-        # Try to find registration expiry text
-        try:
-            expiry_element = driver.find_element(By.XPATH, "//*[contains(text(), 'Registration expires')]")
-            if expiry_element:
                 return "registered"
         except NoSuchElementException:
             pass
-
-        # If no registration expiry found, then it's likely unregistered
+            
         return "unregistered"
             
     except Exception as e:

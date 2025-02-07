@@ -58,22 +58,15 @@ def check_nsw_rego(plate_number):
         if error_elements:
             return "invalid"
         
-        # Try to find registration status with multiple fallback selectors
-        status_selectors = [
-            "div.sc-cbkKFq.fPcfgp",  # Original selector
-            "div[contains(@class, 'registration-status')]",  # Backup selector
-            "//*[contains(text(), 'Registration status')]/..//div[2]"  # Alternative XPath
-        ]
-        
-        for selector in status_selectors:
-            try:
-                status_elements = driver.find_elements(By.CSS_SELECTOR if '.' in selector else By.XPATH, selector)
-                if status_elements:
-                    status = status_elements[0].text.lower()
-                    return "registered" if "registered" in status else "unregistered"
-            except:
-                continue
-        
+        # Try to find registration expiry text
+        try:
+            expiry_element = driver.find_element(By.XPATH, "//*[contains(text(), 'Registration expires')]")
+            if expiry_element:
+                return "registered"
+        except NoSuchElementException:
+            pass
+
+        # If no registration expiry found, then it's likely unregistered
         return "unregistered"
             
     except Exception as e:

@@ -26,83 +26,55 @@ def setup_driver():
     chrome_options.add_argument('--log-level=3')
     chrome_options.add_argument('--silent')
     
-    # Check if running in Docker
-    if os.path.exists('/.dockerenv'):
-        # Docker-specific Chrome options
-        chrome_options.add_argument('--disable-gpu')
-        chrome_options.add_argument('--remote-debugging-port=9222')
-        service = Service('/usr/bin/chromedriver')
-    else:
-        # Local development - let Selenium handle driver path
-        service = Service()
-    
-    return webdriver.Chrome(service=service, options=chrome_options)
+    # Let Selenium handle driver path automatically
+    return webdriver.Chrome(options=chrome_options)
 
 def check_nsw_rego(plate_number):
     driver = setup_driver()
     
     try:
-        logger.info(f"Checking NSW registration for plate: {plate_number}")
+        # Navigate to the registration check page
         driver.get('https://check-registration.service.nsw.gov.au/frc?isLoginRequired=true')
-        time.sleep(3)  # Increased initial wait time
+        time.sleep(3)  # Increased initial wait
         
-        logger.info("Entering plate number")
+        # Enter plate number
         plate_input = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "plateNumberInput"))
         )
         plate_input.clear()
         plate_input.send_keys(plate_number)
         
-        logger.info("Clicking terms checkbox")
+        # Click terms checkbox
         terms_checkbox = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "termsAndConditions"))
         )
         driver.execute_script("arguments[0].click();", terms_checkbox)
         
-        logger.info("Clicking check registration button")
+        # Click check registration button
         check_button = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Check registration')]"))
         )
         driver.execute_script("arguments[0].click();", check_button)
         
-        logger.info("Waiting for results...")
-        time.sleep(5)  # Increased wait time after clicking check
+        time.sleep(5)  # Increased wait for results
         
-        try:
-            # First check for any error messages
-            error_patterns = [
-                "//*[contains(text(), 'No vehicles found')]",
-                "//*[contains(text(), 'not found')]",
-                "//*[contains(text(), 'Invalid')]"
-            ]
-            
-            for pattern in error_patterns:
-                error_elements = driver.find_elements(By.XPATH, pattern)
-                if error_elements:
-                    logger.info(f"Found error message: {error_elements[0].text}")
-                    return "invalid"
-            
-            # Try multiple selectors for registration status
-            status_patterns = [
-                "//*[contains(text(), 'Registration status')]/..//div[2]",
-                "//div[contains(@class, 'registration-status')]",
-                "//div[contains(text(), 'Registered')]",
-                "//div[contains(text(), 'Registration expires')]/.."
-            ]
-            
-            for pattern in status_patterns:
-                elements = driver.find_elements(By.XPATH, pattern)
-                if elements:
-                    status = elements[0].text.lower()
-                    logger.info(f"Found status: {status}")
-                    return "registered" if "registered" in status or "expires" in status else "unregistered"
-            
-            logger.info("No status found after trying all patterns")
+        # First check for error messages indicating invalid registration
+        error_elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'No vehicles found')]")
+        if error_elements:
             return "invalid"
             
-        except NoSuchElementException as e:
-            logger.error(f"Element not found: {str(e)}")
-            return "invalid"
+        # Look for registration status with more general selectors
+        status_elements = driver.find_elements(By.XPATH, "//div[contains(text(), 'Registration expires')]")
+        if status_elements:
+            return "registered"
+            
+        # If no expiry date found, check for registered text
+        status_elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'Registered')]")
+        if status_elements:
+            return "registered"
+            
+        # If neither found, consider it unregistered
+        return "unregistered"
             
     except Exception as e:
         logger.error(f"Error checking NSW rego: {str(e)}")

@@ -37,40 +37,50 @@ def check_nsw_rego(plate_number):
     
     try:
         driver.get('https://check-registration.service.nsw.gov.au/frc?isLoginRequired=true')
-        time.sleep(3)  # Increased wait time
+        time.sleep(2)
         
+        # Enter plate number
         plate_input = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "plateNumberInput"))
         )
         plate_input.clear()
         plate_input.send_keys(plate_number)
         
+        # Click terms checkbox
         terms_checkbox = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "termsAndConditions"))
         )
         driver.execute_script("arguments[0].click();", terms_checkbox)
         
+        # Click Check registration button
         check_button = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Check registration')]"))
         )
         driver.execute_script("arguments[0].click();", check_button)
         
-        logger.info("Waiting for results...")
-        time.sleep(8)  # Increased wait time to ensure page loads completely
+        time.sleep(3)
         
-        # Wait for any status element to be present
-        # First check for any error messages
-        error_elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'No vehicles found')]")
-        if error_elements:
-            return "invalid"
-            
-        # Look specifically for "Registration expires:" text
+        # Check for error message
         try:
-            expiry_text = driver.find_element(By.XPATH, "//p[contains(text(), 'Registration expires:')]")
-            if expiry_text:
-                return "registered"
+            error_message = driver.find_element(By.CLASS_NAME, "heading-5").text
+            if "No vehicles found" in error_message:
+                return "invalid"
         except NoSuchElementException:
             pass
+            
+        # If no error, look for registration status
+        try:
+            status_div = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, ".sc-cbkKFq.fPcfgp"))
+            )
+            status = status_div.text
+            
+            # If we find the status div and it contains "Registered", the vehicle is registered
+            if "Registered" in status:
+                return "registered"
+                
+        except (TimeoutException, NoSuchElementException):
+            logger.info("Could not find registration status")
             
         return "unregistered"
             

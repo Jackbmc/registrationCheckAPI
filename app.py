@@ -61,33 +61,39 @@ def check_nsw_rego(plate_number):
         
         time.sleep(5)
         
-        # Wait for main content to load
-        try:
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "GlobalNav__page-IXtUCzetI-"))
-            )
-        except TimeoutException:
-            logger.info("Page did not load completely")
+        # Save page source for debugging
+        page_source = driver.page_source
+        with open('page_source.html', 'w', encoding='utf-8') as f:
+            f.write(page_source)
+        logger.info("Saved page source to page_source.html")
+        
+        # Check for error message
+        error_elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'No vehicles found')]")
+        if error_elements:
+            logger.info("Vehicle not found")
             return "invalid"
             
-        # Check for error message
+        # Simple check for registration expiry text anywhere in the page
         try:
-            error_message = driver.find_element(By.XPATH, "//*[contains(text(), 'No vehicles found')]")
-            if error_message:
-                logger.info("Vehicle not found")
-                return "invalid"
-        except NoSuchElementException:
-            pass
+            expiry_elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'Registration expires')]")
+            logger.info(f"Found {len(expiry_elements)} elements containing 'Registration expires'")
+            for elem in expiry_elements:
+                logger.info(f"Element text: {elem.text}")
+                if "Registration expires" in elem.text:
+                    return "registered"
+        except Exception as e:
+            logger.error(f"Error checking registration: {str(e)}")
             
-        # Look for registration expiry text in the exact structure we know works
-        try:
-            expiry_element = driver.find_element(By.XPATH, "//p[contains(@class, 'sc-iQKALj')]//strong[contains(text(), 'Registration expires:')]")
-            if expiry_element:
-                logger.info(f"Found registration expiry: {expiry_element.text}")
-                return "registered"
-        except NoSuchElementException:
-            logger.info("No registration expiry found")
-            
+        # Log all text content for debugging
+        all_elements = driver.find_elements(By.XPATH, "//*")
+        logger.info("All text content:")
+        for elem in all_elements:
+            try:
+                if elem.text and len(elem.text.strip()) > 0:
+                    logger.info(f"Element text: {elem.text}")
+            except:
+                pass
+                
         return "unregistered"
             
     except Exception as e:

@@ -59,56 +59,18 @@ def check_nsw_rego(plate_number):
         time.sleep(8)  # Increased wait time to ensure page loads completely
         
         # Wait for any status element to be present
-        try:
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "fPcfgp"))
-            )
-        except TimeoutException:
-            logger.info("Timeout waiting for status element")
-        
         # First check for any error messages
-        error_patterns = [
-            "//*[contains(text(), 'No vehicles found')]",
-            "//*[contains(text(), 'not found')]",
-            "//*[contains(text(), 'Invalid')]"
-        ]
-        
-        for pattern in error_patterns:
-            error_elements = driver.find_elements(By.XPATH, pattern)
-            if error_elements:
-                logger.info(f"Found error message: {error_elements[0].text}")
-                return "invalid"
-        
-        # Try multiple approaches to find registration status
-        try:
-            # Method 1: Direct class lookup
-            elements = driver.find_elements(By.CLASS_NAME, "fPcfgp")
-            logger.info(f"Found {len(elements)} elements with class fPcfgp")
-            for element in elements:
-                logger.info(f"Element text: {element.text}")
-                if "Registered" in element.text:
-                    return "registered"
-
-            # Method 2: Look for green success icon near registration status
-            success_elements = driver.find_elements(By.XPATH, "//svg[contains(@id, 'registration-icon')]/../following-sibling::div")
-            logger.info(f"Found {len(success_elements)} elements with registration icon")
-            for element in success_elements:
-                logger.info(f"Success element text: {element.text}")
-                if "Registered" in element.text:
-                    return "registered"
-                    
-            # Method 3: Look for registration expiry text
-            expiry_elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'Expires:')]")
-            logger.info(f"Found {len(expiry_elements)} expiry elements")
-            if expiry_elements:
-                return "registered"
-                
-            # Take screenshot for debugging
-            driver.save_screenshot('debug.png')
-            logger.info("Saved debug screenshot")
+        error_elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'No vehicles found')]")
+        if error_elements:
+            return "invalid"
             
-        except Exception as e:
-            logger.error(f"Error while checking registration status: {str(e)}")
+        # Look specifically for "Registration expires:" text
+        try:
+            expiry_text = driver.find_element(By.XPATH, "//p[contains(text(), 'Registration expires:')]")
+            if expiry_text:
+                return "registered"
+        except NoSuchElementException:
+            pass
             
         return "unregistered"
             

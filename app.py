@@ -82,20 +82,14 @@ def check_nsw_rego(plate_number):
                     logger.info(f"Found error message: {error_elements[0].text}")
                     return "invalid"
             
-            # Try multiple selectors for registration status
-            status_patterns = [
-                "//*[contains(text(), 'Registration status')]/..//div[2]",
-                "//div[contains(@class, 'registration-status')]",
-                "//div[contains(text(), 'Registered')]",
-                "//div[contains(text(), 'Registration expires')]/.."
-            ]
+            # Look for the specific registration status element
+            status_element = driver.find_element(By.CLASS_NAME, "fPcfgp")
+            if status_element and "Registered" in status_element.text:
+                logger.info(f"Found registration status: {status_element.text}")
+                return "registered"
             
-            for pattern in status_patterns:
-                elements = driver.find_elements(By.XPATH, pattern)
-                if elements:
-                    status = elements[0].text.lower()
-                    logger.info(f"Found status: {status}")
-                    return "registered" if "registered" in status or "expires" in status else "unregistered"
+            logger.info("Vehicle appears to be unregistered")
+            return "unregistered"
             
             logger.info("No status found after trying all patterns")
             return "invalid"

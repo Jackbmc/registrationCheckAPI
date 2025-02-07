@@ -7,6 +7,14 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     unzip \
     xvfb \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatspi2.0-0 \
+    libgdk-pixbuf2.0-0 \
+    libgtk-3-0 \
+    libpango-1.0-0 \
+    libxshmfence1 \
     && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
     && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \

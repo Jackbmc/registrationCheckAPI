@@ -2,3 +2,4 @@ flask==2.0.1
 werkzeug==2.0.1
 selenium==4.15.2
 webdriver_manager==4.0.1
+selenium-stealth==1.0.6

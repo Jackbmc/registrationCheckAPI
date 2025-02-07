@@ -5,9 +5,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver.chrome.service import Service
+from selenium_stealth import stealth
 import time
 import logging
 import os
+import random
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,40 +25,121 @@ def setup_driver():
     chrome_options.add_argument('--headless')
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
-    chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
+    chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+    chrome_options.add_argument('--disable-web-security')
+    chrome_options.add_argument('--disable-features=IsolateOrigins,site-per-process')
+    
+    # Add geolocation and permissions for Sydney, Australia
+    chrome_options.add_argument('--use-fake-ui-for-media-stream')
+    chrome_options.add_argument('--use-fake-device-for-media-stream')
+    chrome_options.add_argument('--geolocation=141.0,-33.8') # Sydney coordinates
+    
+    chrome_options.add_experimental_option('excludeSwitches', ['enable-automation', 'enable-logging'])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
+    
+    # Add permissions
+    chrome_options.add_experimental_option('prefs', {
+        'profile.default_content_setting_values': {
+            'notifications': 1,
+            'geolocation': 1,
+            'media_stream_mic': 1,
+            'media_stream_camera': 1
+        }
+    })
     chrome_options.add_argument('--log-level=3')
     chrome_options.add_argument('--silent')
-    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    chrome_options.add_argument(f'--window-size={random.randint(1050,1200)},{random.randint(800,1000)}')
+    chrome_options.add_argument('--start-maximized')
+    
+    # Use a random recent Chrome version
+    chrome_versions = ['120.0.0.0', '119.0.0.0', '118.0.0.0']
+    chrome_version = random.choice(chrome_versions)
+    user_agent = f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{chrome_version} Safari/537.36'
+    chrome_options.add_argument(f'--user-agent={user_agent}')
     
     service = Service('/usr/local/bin/chromedriver')
+    driver = webdriver.Chrome(service=service, options=chrome_options)
     
-    return webdriver.Chrome(service=service, options=chrome_options)
+    # Apply stealth mode
+    stealth(driver,
+        languages=["en-US", "en"],
+        vendor="Google Inc.",
+        platform="Win32",
+        webgl_vendor="Intel Inc.",
+        renderer="Intel Iris OpenGL Engine",
+        fix_hairline=True,
+    )
+    
+    return driver
 
 def check_nsw_rego(plate_number):
     driver = setup_driver()
     
     try:
         logger.info(f"Checking NSW registration for plate: {plate_number}")
-        driver.get('https://check-registration.service.nsw.gov.au/frc?isLoginRequired=true')
-        time.sleep(3)
         
-        # Enter plate number
+        # Set additional headers
+        driver.execute_cdp_cmd('Network.setUserAgentOverride', {
+            "userAgent": driver.execute_script("return navigator.userAgent"),
+            "platform": "Win32",
+            "acceptLanguage": "en-US,en;q=0.9",
+            "headers": {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1"
+            }
+        })
+        
+        # Load the page and wait for it to be fully initialized
+        driver.get('https://check-registration.service.nsw.gov.au/frc?isLoginRequired=true')
+        time.sleep(random.uniform(2, 4))
+        
+        # Wait for reCAPTCHA iframe to be present and switch to it
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "iframe[title='reCAPTCHA']"))
+            )
+            # Switch back to main content
+            driver.switch_to.default_content()
+            logger.info("reCAPTCHA element loaded")
+        except TimeoutException:
+            logger.warning("reCAPTCHA element not found, continuing anyway")
+        
+        # Enter plate number with human-like typing
         plate_input = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "plateNumberInput"))
         )
         plate_input.clear()
-        plate_input.send_keys(plate_number)
+        for char in plate_number:
+            plate_input.send_keys(char)
+            time.sleep(random.uniform(0.1, 0.3))
         
-        # Click terms checkbox
+        # Add some random mouse movement and pause
+        time.sleep(random.uniform(0.5, 1.0))
+        
+        # Scroll the page a bit like a human would
+        driver.execute_script("window.scrollBy(0, 100);")
+        time.sleep(random.uniform(0.3, 0.7))
+        
+        # Click terms checkbox with natural delay
         terms_checkbox = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "termsAndConditions"))
         )
+        driver.execute_script("arguments[0].scrollIntoView(true);")
+        time.sleep(random.uniform(0.3, 0.7))
         driver.execute_script("arguments[0].click();", terms_checkbox)
         
-        # Click Check registration button
+        # Add more natural delay
+        time.sleep(random.uniform(0.8, 1.5))
+        
+        # Scroll to and click the check registration button
         check_button = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Check registration')]"))
         )
+        driver.execute_script("arguments[0].scrollIntoView(true);")
+        time.sleep(random.uniform(0.3, 0.7))
         driver.execute_script("arguments[0].click();", check_button)
         
         time.sleep(5)

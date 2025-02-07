@@ -8,11 +8,9 @@ from selenium.webdriver.chrome.service import Service
 import time
 import logging
 import os
-import sys
-
-# Configure logging for debugging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configure logging to suppress selenium messages
+logging.getLogger('selenium').setLevel(logging.CRITICAL)
+logging.getLogger().setLevel(logging.CRITICAL)
 
 app = Flask(__name__)
 
@@ -26,58 +24,59 @@ def setup_driver():
     chrome_options.add_argument('--log-level=3')
     chrome_options.add_argument('--silent')
     
-    # Let Selenium handle driver path automatically
-    return webdriver.Chrome(options=chrome_options)
+    service = Service('/usr/local/bin/chromedriver')
+    
+    return webdriver.Chrome(service=service, options=chrome_options)
 
 def check_nsw_rego(plate_number):
     driver = setup_driver()
     
     try:
-        # Navigate to the registration check page
         driver.get('https://check-registration.service.nsw.gov.au/frc?isLoginRequired=true')
-        time.sleep(3)  # Increased initial wait
+        time.sleep(3)  # Increased wait time
         
-        # Enter plate number
         plate_input = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "plateNumberInput"))
         )
         plate_input.clear()
         plate_input.send_keys(plate_number)
         
-        # Click terms checkbox
         terms_checkbox = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "termsAndConditions"))
         )
         driver.execute_script("arguments[0].click();", terms_checkbox)
         
-        # Click check registration button
         check_button = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Check registration')]"))
         )
         driver.execute_script("arguments[0].click();", check_button)
         
-        time.sleep(5)  # Increased wait for results
+        time.sleep(4)  # Increased wait time
         
-        # First check for error messages indicating invalid registration
+        # First check for error message with a more reliable selector
         error_elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'No vehicles found')]")
         if error_elements:
             return "invalid"
-            
-        # Look for registration status with more general selectors
-        status_elements = driver.find_elements(By.XPATH, "//div[contains(text(), 'Registration expires')]")
-        if status_elements:
-            return "registered"
-            
-        # If no expiry date found, check for registered text
-        status_elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'Registered')]")
-        if status_elements:
-            return "registered"
-            
-        # If neither found, consider it unregistered
+        
+        # Try to find registration status with multiple fallback selectors
+        status_selectors = [
+            "div.sc-cbkKFq.fPcfgp",  # Original selector
+            "div[contains(@class, 'registration-status')]",  # Backup selector
+            "//*[contains(text(), 'Registration status')]/..//div[2]"  # Alternative XPath
+        ]
+        
+        for selector in status_selectors:
+            try:
+                status_elements = driver.find_elements(By.CSS_SELECTOR if '.' in selector else By.XPATH, selector)
+                if status_elements:
+                    status = status_elements[0].text.lower()
+                    return "registered" if "registered" in status else "unregistered"
+            except:
+                continue
+        
         return "unregistered"
             
     except Exception as e:
-        logger.error(f"Error checking NSW rego: {str(e)}")
         return "invalid"
     finally:
         driver.quit()
@@ -165,23 +164,4 @@ def check_rego():
         }), 500
 
 if __name__ == '__main__':
-    # Check if script is being run with command line arguments
-    if len(sys.argv) > 1:
-        if len(sys.argv) != 3:
-            print("Usage: python app.py <state> <plate>")
-            print("Example: python app.py NSW ABC123")
-            sys.exit(1)
-            
-        state = sys.argv[1].upper()
-        plate = sys.argv[2]
-        
-        if state not in ['ACT', 'NSW']:
-            print("Error: State must be either ACT or NSW")
-            sys.exit(1)
-            
-        print(f"Checking {state} registration for plate: {plate}")
-        status = check_act_rego(plate) if state == 'ACT' else check_nsw_rego(plate)
-        print(f"Registration status: {status}")
-    else:
-        # Run as web server
-        app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000)

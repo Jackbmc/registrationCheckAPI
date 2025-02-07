@@ -36,8 +36,9 @@ def check_nsw_rego(plate_number):
     driver = setup_driver()
     
     try:
+        logger.info(f"Checking NSW registration for plate: {plate_number}")
         driver.get('https://check-registration.service.nsw.gov.au/frc?isLoginRequired=true')
-        time.sleep(2)
+        time.sleep(3)
         
         # Enter plate number
         plate_input = WebDriverWait(driver, 10).until(
@@ -58,29 +59,34 @@ def check_nsw_rego(plate_number):
         )
         driver.execute_script("arguments[0].click();", check_button)
         
-        time.sleep(3)
+        time.sleep(5)
         
+        # Wait for main content to load
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "GlobalNav__page-IXtUCzetI-"))
+            )
+        except TimeoutException:
+            logger.info("Page did not load completely")
+            return "invalid"
+            
         # Check for error message
         try:
-            error_message = driver.find_element(By.CLASS_NAME, "heading-5").text
-            if "No vehicles found" in error_message:
+            error_message = driver.find_element(By.XPATH, "//*[contains(text(), 'No vehicles found')]")
+            if error_message:
+                logger.info("Vehicle not found")
                 return "invalid"
         except NoSuchElementException:
             pass
             
-        # If no error, look for registration status
+        # Look for registration expiry text in the exact structure we know works
         try:
-            status_div = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, ".sc-cbkKFq.fPcfgp"))
-            )
-            status = status_div.text
-            
-            # If we find the status div and it contains "Registered", the vehicle is registered
-            if "Registered" in status:
+            expiry_element = driver.find_element(By.XPATH, "//p[contains(@class, 'sc-iQKALj')]//strong[contains(text(), 'Registration expires:')]")
+            if expiry_element:
+                logger.info(f"Found registration expiry: {expiry_element.text}")
                 return "registered"
-                
-        except (TimeoutException, NoSuchElementException):
-            logger.info("Could not find registration status")
+        except NoSuchElementException:
+            logger.info("No registration expiry found")
             
         return "unregistered"
             
